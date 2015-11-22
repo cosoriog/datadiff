@@ -18,6 +18,7 @@ from collections import OrderedDict
 import logging
 from difflib import SequenceMatcher, unified_diff
 import sys
+
 try:
     from numbers import Number
 except ImportError:
@@ -40,14 +41,23 @@ For each type, we need:
 * conversion to hashable
 """
 
+
 class NotHashable(TypeError): pass
+
+
 class NotSequence(TypeError): pass
+
+
 class DiffTypeError(TypeError): pass
+
+
 class DiffNotImplementedForType(DiffTypeError):
     def __init__(self, attempted_type):
         self.attempted_type = attempted_type
+
     def __str__(self):
         return "diff() not implemented for %s" % self.attempted_type
+
 
 def unified_diff_strings(a, b, fromfile='', tofile='', fromfiledate='', tofiledate='', context=3):
     """
@@ -58,6 +68,7 @@ def unified_diff_strings(a, b, fromfile='', tofile='', fromfiledate='', tofileda
                                   fromfile, tofile, fromfiledate, tofiledate, context,
                                   lineterm=''))
 
+
 def diff(a, b, context=3, depth=0, fromfile='a', tofile='b'):
     if isinstance(a, string_types) and isinstance(b, string_types):
         # special cases
@@ -67,10 +78,16 @@ def diff(a, b, context=3, depth=0, fromfile='a', tofile='b'):
             # even though technically it is a sequence,
             # we don't want to diff char-by-char
             raise DiffNotImplementedForType(str)
-    if type(a) != type(b):
-        raise DiffTypeError('Types differ: %s=%s %s=%s  Values of a and b are: %r, %r' % (fromfile, tofile, type(a), type(b), a, b))
-    if type(a) in (dict, OrderedDict):
+
+    if type(a) == type(b) == OrderedDict:
+        # compare dict with OrderedDict. This has to go before next comparison
+        return diff_ordereddict(a, b, context, depth, fromfile=fromfile, tofile=tofile)
+    if type(a) in (dict, OrderedDict) and type(b) in (dict, OrderedDict):
+        # compare dict with OrderedDict or dict with dict
         return diff_dict(a, b, context, depth, fromfile=fromfile, tofile=tofile)
+    if type(a) != type(b):
+        raise DiffTypeError(
+            'Types differ: %s=%s %s=%s  Values of a and b are: %r, %r' % (fromfile, tofile, type(a), type(b), a, b))
     if hasattr(a, 'intersection') and hasattr(a, 'difference'):
         return diff_set(a, b, context, depth, fromfile=fromfile, tofile=tofile)
     try:
@@ -78,8 +95,8 @@ def diff(a, b, context=3, depth=0, fromfile='a', tofile='b'):
     except NotSequence:
         raise DiffNotImplementedForType(type(a))
 
-class DataDiff(object):
 
+class DataDiff(object):
     def __init__(self, datatype, type_start_str=None, type_end_str=None, fromfile='a', tofile='b'):
         self.diffs = []
         self.datatype = datatype
@@ -134,7 +151,7 @@ class DataDiff(object):
         if depth == 0 and include_preamble:
             output.append('--- %s' % self.fromfile)
             output.append('+++ %s' % self.tofile)
-        output.append(' '*depth + self.type_start_str)
+        output.append(' ' * depth + self.type_start_str)
         for change, items in self.diffs:
             if change == 'context':
                 context_a = str(items[0])
@@ -143,13 +160,13 @@ class DataDiff(object):
                 context_b = str(items[2])
                 if items[2] != items[3]:
                     context_b += ',' + str(items[3])
-                output.append(' '*depth + '@@ -%s +%s @@' % (context_a, context_b))
+                output.append(' ' * depth + '@@ -%s +%s @@' % (context_a, context_b))
                 continue
             if change == 'context_end_container':
-                output.append(' '*depth + '@@  @@')
+                output.append(' ' * depth + '@@  @@')
                 continue
             elif change == 'datadiff':
-                output.append(' '*depth + items.stringify(depth+1) + ',')
+                output.append(' ' * depth + items.stringify(depth + 1) + ',')
                 continue
             if change == 'delete':
                 ch = '-'
@@ -160,8 +177,8 @@ class DataDiff(object):
             else:
                 raise Exception('Unknown change type %r' % change)
             for item in items:
-                output.append(' '*depth + "%s%r," % (ch, item))
-        output.append(' '*depth + self.type_end_str)
+                output.append(' ' * depth + "%s%r," % (ch, item))
+        output.append(' ' * depth + self.type_end_str)
         return '\n'.join(output)
 
     def __nonzero__(self):
@@ -169,6 +186,7 @@ class DataDiff(object):
 
     def __bool__(self):
         return bool([d for d in self.diffs if d[0] != 'equal'])
+
 
 def hashable(s):
     try:
@@ -194,6 +212,7 @@ def hashable(s):
     else:
         return ret
 
+
 def try_diff_seq(a, b, context=3, depth=0, fromfile='a', tofile='b'):
     """
     Safe to try any containers with this function, to see if it might be a sequence
@@ -207,12 +226,13 @@ def try_diff_seq(a, b, context=3, depth=0, fromfile='a', tofile='b'):
         log.debug('tried SequenceMatcher but got error', exc_info=True)
         raise NotSequence("Cannot use SequenceMatcher on %s" % type(a))
 
+
 def diff_seq(a, b, context=3, depth=0, fromfile='a', tofile='b'):
     if not hasattr(a, '__iter__') and not hasattr(a, '__getitem__'):
         raise NotSequence("Not a sequence %s" % type(a))
     hashable_a = [hashable(_) for _ in a]
     hashable_b = [hashable(_) for _ in b]
-    sm = SequenceMatcher(a = hashable_a, b = hashable_b)
+    sm = SequenceMatcher(a=hashable_a, b=hashable_b)
     if type(a) == tuple:
         ddiff = DataDiff(tuple, '(', ')', fromfile=fromfile, tofile=tofile)
     elif type(b) == list:
@@ -220,15 +240,15 @@ def diff_seq(a, b, context=3, depth=0, fromfile='a', tofile='b'):
     else:
         ddiff = DataDiff(type(a), fromfile=fromfile, tofile=tofile)
     for chunk in sm.get_grouped_opcodes(context):
-        ddiff.context(max(chunk[0][1]-1,0), max(chunk[-1][2]-1, 0),
-                     max(chunk[0][3]-1,0), max(chunk[-1][4]-1, 0))
+        ddiff.context(max(chunk[0][1] - 1, 0), max(chunk[-1][2] - 1, 0),
+                      max(chunk[0][3] - 1, 0), max(chunk[-1][4] - 1, 0))
         for change, i1, i2, j1, j2 in chunk:
             if change == 'replace':
                 consecutive_deletes = []
                 consecutive_inserts = []
                 for a2, b2 in zip(a[i1:i2], b[j1:j2]):
                     try:
-                        nested_diff = diff(a2, b2, context, depth+1)
+                        nested_diff = diff(a2, b2, context, depth + 1)
                         ddiff.delete_multi(consecutive_deletes)
                         ddiff.insert_multi(consecutive_inserts)
                         consecutive_deletes = []
@@ -241,13 +261,13 @@ def diff_seq(a, b, context=3, depth=0, fromfile='a', tofile='b'):
                 # differing lengths get truncated by zip()
                 # here we handle the truncated items
                 ddiff.delete_multi(consecutive_deletes)
-                if i2-i1 > j2-j1:
-                    common_length = j2-j1 # covered by zip
-                    ddiff.delete_multi(a[i1+common_length:i2])
+                if i2 - i1 > j2 - j1:
+                    common_length = j2 - j1  # covered by zip
+                    ddiff.delete_multi(a[i1 + common_length:i2])
                 ddiff.insert_multi(consecutive_inserts)
-                if i2-i1 < j2-j1:
-                    common_length = i2-i1 # covered by zip
-                    ddiff.insert_multi(b[j1+common_length:j2])
+                if i2 - i1 < j2 - j1:
+                    common_length = i2 - i1  # covered by zip
+                    ddiff.insert_multi(b[j1 + common_length:j2])
             else:
                 if change == 'insert':
                     items = b[j1:j2]
@@ -267,6 +287,7 @@ class dictitem(tuple):
             return "%r: %s" % (key, diff_val.strip())
         return "%r: %r" % (key, val)
 
+
 def diff_dict(a, b, context=3, depth=0, fromfile='a', tofile='b'):
     ddiff = DataDiff(dict, '{', '}', fromfile=fromfile, tofile=tofile)
     for key in a.keys():
@@ -274,10 +295,10 @@ def diff_dict(a, b, context=3, depth=0, fromfile='a', tofile='b'):
             ddiff.delete(dictitem((key, a[key])))
         elif a[key] != b[key]:
             try:
-                nested_diff = diff(a[key], b[key], context, depth+1)
+                nested_diff = diff(a[key], b[key], context, depth + 1)
                 nested_item = dictitem((key, nested_diff))
-                nested_item.depth = depth+1
-                ddiff.equal(nested_item) # not really equal
+                nested_item.depth = depth + 1
+                ddiff.equal(nested_item)  # not really equal
             except DiffTypeError:
                 ddiff.delete(dictitem((key, a[key])))
                 ddiff.insert(dictitem((key, b[key])))
@@ -298,13 +319,54 @@ def diff_dict(a, b, context=3, depth=0, fromfile='a', tofile='b'):
         if isinstance(key, string_types) or isinstance(key, Number):
             return key
         else:
-            return abs(hash(key)) # abs for consistency between py2/3, at least for datetime
+            return abs(hash(key))  # abs for consistency between py2/3, at least for datetime
+
     ddiff.diffs.sort(key=diffitem_dictitem_sort_key)
 
     if context < 0:
         ddiff.context_end_container()
 
     return ddiff
+
+
+def diff_ordereddict(a, b, context=3, depth=0, fromfile='a', tofile='b'):
+    ddiff = DataDiff(OrderedDict, '{', '}', fromfile=fromfile, tofile=tofile)
+    for key in a.keys():
+        if key not in b:
+            ddiff.delete(dictitem((key, a[key])))
+        elif a[key] != b[key]:
+            try:
+                nested_diff = diff(a[key], b[key], context, depth + 1)
+                nested_item = dictitem((key, nested_diff))
+                nested_item.depth = depth + 1
+                ddiff.equal(nested_item)  # not really equal
+            except DiffTypeError:
+                ddiff.delete(dictitem((key, a[key])))
+                ddiff.insert(dictitem((key, b[key])))
+        else:
+            if context:
+                ddiff.equal(dictitem((key, a[key])))
+            context -= 1
+    for key in b:
+        if key not in a:
+            ddiff.insert(dictitem((key, b[key])))
+
+    def diffitem_dictitem_sort_key(diffitem):
+        change, dictitem = diffitem
+        if type(dictitem) == DataDiff:
+            return 0
+        key = dictitem[0][0]
+        # use hash, to make sure its always orderable against other potential key types
+        if isinstance(key, string_types) or isinstance(key, Number):
+            return key
+        else:
+            return abs(hash(key))  # abs for consistency between py2/3, at least for datetime
+
+    if context < 0:
+        ddiff.context_end_container()
+
+    return ddiff
+
 
 def diff_set(a, b, context=3, depth=0, fromfile='b', tofile='a'):
     ddiff = DataDiff(type(a), fromfile=fromfile, tofile=tofile)
