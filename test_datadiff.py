@@ -1,7 +1,7 @@
 from textwrap import dedent
 from datetime import datetime
 import sys
-import re
+from collections import OrderedDict
 
 from nose.tools import assert_raises, assert_equal, raises
 
@@ -153,6 +153,21 @@ def test_diff_list_dict():
         ]''')
     assert_equal(str(d), expected)
 
+def test_diff_list_ordereddict():
+    a = [1, OrderedDict({'a': 'b'}), 4]
+    b = [1, 4]
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        [
+        @@ -0,2 +0,1 @@
+         1,
+        -OrderedDict([('a', 'b')]),
+         4,
+        ]''')
+    assert_equal(str(d), expected)
+
 def test_diff_list_set():
     a = [1, set([8, 9]), 4]
     b = [1, 4]
@@ -231,6 +246,25 @@ def test_diff_dict():
         }''')
     assert_equal(str(d), expected)
 
+def test_diff_OrderedDict():
+    a = OrderedDict(zero=0,   one=1, two=2, three=3,         nine=9, ten=10)
+    b = OrderedDict(zero='@', one=1,        three=3, four=4, nine=9, ten=10)
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        {
+        +'four': 4,
+         'nine': 9,
+         'one': 1,
+         'ten': 10,
+        -'two': 2,
+        -'zero': 0,
+        +'zero': '@',
+        @@  @@
+        }''')
+    assert_equal(str(d), expected)
+
 def test_diff_dict_keytypes():
     a = {}
     b = {datetime(2010,10,28): 1, True: 1, 2: 2}
@@ -245,9 +279,36 @@ def test_diff_dict_keytypes():
         }''')
     assert_equal(str(d), expected)
 
+def test_diff_OrderedDict_keytypes():
+    a = OrderedDict()
+    b = OrderedDict({datetime(2010,10,28): 1, True: 1, 2: 2})
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        {
+        +True: 1,
+        +2: 2,
+        +datetime.datetime(2010, 10, 28, 0, 0): 1,
+        }''')
+    assert_equal(str(d), expected)
+
 def test_diff_dict_complex():
     a = dict(a=1, b=dict(foo='bar'))
     b = dict(a=1)
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        {
+         'a': 1,
+        -'b': {'foo': 'bar'},
+        }''')
+    assert_equal(str(d), expected)
+
+def test_diff_OrderedDict_complex():
+    a = OrderedDict(a=1, b=dict(foo='bar'))
+    b = OrderedDict(a=1)
     d = diff(a, b, fromfile="x", tofile="y")
     expected = dedent('''\
         --- x
@@ -303,6 +364,9 @@ def test_eval_bool():
     assert_equal(bool(d), True)
 
     d = diff(dict(a=1), dict(a=1), fromfile="x", tofile="y")
+    assert_equal(bool(d), False)
+
+    d = diff(OrderedDict(a=1), OrderedDict(a=1), fromfile="x", tofile="y")
     assert_equal(bool(d), False)
 
 def test_equal():
@@ -389,6 +453,23 @@ def test_recursive_dict():
         }''')
     assert_equal(str(d), expected)
 
+def test_recursive_OrderedDict():
+    a = OrderedDict(a=1, b=OrderedDict(foo=17, bar=19), c=3)
+    b = OrderedDict(a=1, b=OrderedDict(foo=17,       ), c=3)
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        {
+         'a': 1,
+         'b': {
+         -'bar': 19,
+          'foo': 17,
+         },
+         'c': 3,
+        }''')
+    assert_equal(str(d), expected)
+
 def test_recursive_set():
     a = set([1, 2, frozenset([3, 4, 5]), 8])
     b = set([1, 2, frozenset([3, 2, 5]), 8])
@@ -432,6 +513,48 @@ def test_nested_unhashable2():
     # dict is unhashable, and nested in another dict
     a = [dict(foo = dict(user_id='badf00d', mount_point='Wiki'))]
     b = [dict(foo = dict(mount_point='Wikiiii'))]
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        [
+        @@ -0 +0 @@
+         {
+          'foo': {
+          -'mount_point': 'Wiki',
+          +'mount_point': 'Wikiiii',
+          -'user_id': 'badf00d',
+          },
+         },
+        ]''')
+    assert_equal(str(d), expected)
+    
+def test_nested_unhashable3():
+    # OrderedDict is unhashable, and nested in a list
+    a = [('Wiki.test', OrderedDict(user_id='badf00d', mount_point='Wiki'))]
+    b = [('Wiki.test', OrderedDict(user_id='abc'))]
+    d = diff(a, b, fromfile="x", tofile="y")
+    expected = dedent('''\
+        --- x
+        +++ y
+        [
+        @@ -0 +0 @@
+         (
+         @@ -0,1 +0,1 @@
+          'Wiki.test',
+           {
+          -'mount_point': 'Wiki',
+          -'user_id': 'badf00d',
+          +'user_id': 'abc',
+          },
+         ),
+        ]''')
+    assert_equal(str(d), expected)
+
+def test_nested_unhashable4():
+    # OrderedDict is unhashable, and nested in another OrderedDict
+    a = [OrderedDict(foo = OrderedDict(user_id='badf00d', mount_point='Wiki'))]
+    b = [OrderedDict(foo = OrderedDict(mount_point='Wikiiii'))]
     d = diff(a, b, fromfile="x", tofile="y")
     expected = dedent('''\
         --- x

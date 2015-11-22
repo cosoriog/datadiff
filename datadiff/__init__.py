@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+from collections import OrderedDict
 
 import logging
 from difflib import SequenceMatcher, unified_diff
@@ -68,7 +69,7 @@ def diff(a, b, context=3, depth=0, fromfile='a', tofile='b'):
             raise DiffNotImplementedForType(str)
     if type(a) != type(b):
         raise DiffTypeError('Types differ: %s=%s %s=%s  Values of a and b are: %r, %r' % (fromfile, tofile, type(a), type(b), a, b))
-    if type(a) == dict:
+    if type(a) in (dict, OrderedDict):
         return diff_dict(a, b, context, depth, fromfile=fromfile, tofile=tofile)
     if hasattr(a, 'intersection') and hasattr(a, 'difference'):
         return diff_set(a, b, context, depth, fromfile=fromfile, tofile=tofile)
@@ -174,7 +175,7 @@ def hashable(s):
         # convert top-level container
         if type(s) == list:
             ret = tuple(s)
-        elif type(s) == dict:
+        elif type(s) in (dict, OrderedDict):
             ret = frozenset(hashable(_) for _ in s.items())
         elif type(s) == set:
             ret = frozenset(s)
